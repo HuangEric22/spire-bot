@@ -18,6 +18,18 @@ class SimulatorClientError(RuntimeError):
     """Raised when the simulator process cannot be used safely."""
 
 
+def default_game_dir_candidates() -> list[str]:
+    """Return common STS2 install paths for Windows, WSL, and macOS."""
+    return [
+        r"C:\Program Files (x86)\Steam\steamapps\common\Slay the Spire 2",
+        r"C:\Program Files\Steam\steamapps\common\Slay the Spire 2",
+        "/mnt/c/Program Files (x86)/Steam/steamapps/common/Slay the Spire 2",
+        "/mnt/c/Program Files/Steam/steamapps/common/Slay the Spire 2",
+        "~/Library/Application Support/Steam/steamapps/common/Slay the Spire 2/"
+        "SlayTheSpire2.app/Contents/Resources/data_sts2_macos_arm64",
+    ]
+
+
 def find_dotnet() -> str:
     """Return a usable dotnet executable path."""
     candidates = [
@@ -52,6 +64,7 @@ class SimulatorClient:
     project_path: Path | None = None
     dotnet_path: str | None = None
     game_dir: str | None = None
+    game_dir_candidates: list[str] | None = None
     no_build: bool = True
 
     def __post_init__(self) -> None:
@@ -68,8 +81,9 @@ class SimulatorClient:
             raise SimulatorClientError("Simulator process is already running.")
 
         env = os.environ.copy()
-        if self.game_dir:
-            env["STS2_GAME_DIR"] = self.game_dir
+        game_dir = self._resolve_game_dir()
+        if game_dir:
+            env["STS2_GAME_DIR"] = game_dir
 
         cmd = [self.dotnet_path, "run"]
         if self.no_build:
@@ -96,10 +110,13 @@ class SimulatorClient:
         proc = self._require_process()
         assert proc.stdout is not None
 
+        skipped_lines: list[str] = []
         while True:
             line = proc.stdout.readline()
             if not line:
                 message = "EOF from simulator process"
+                if skipped_lines:
+                    message += f"; last stdout: {' | '.join(skipped_lines[-5:])}"
                 if proc.poll() is not None and proc.stderr is not None:
                     stderr = proc.stderr.read().strip()
                     if stderr:
@@ -109,6 +126,8 @@ class SimulatorClient:
             line = line.strip()
             if line.startswith("{"):
                 return json.loads(line)
+            if line:
+                skipped_lines.append(line[:400])
 
     def send(self, command: JsonDict) -> JsonDict:
         """Send one command dict and return one response dict."""
@@ -185,6 +204,19 @@ class SimulatorClient:
         if self.proc is None:
             raise SimulatorClientError("Simulator process has not been started.")
         return self.proc
+
+    def _resolve_game_dir(self) -> str | None:
+        candidates = []
+        if self.game_dir:
+            candidates.append(self.game_dir)
+        candidates.extend(self.game_dir_candidates or default_game_dir_candidates())
+
+        for candidate in candidates:
+            expanded = os.path.expandvars(os.path.expanduser(candidate))
+            if Path(expanded).exists():
+                return expanded
+
+        return self.game_dir
 
     def __enter__(self) -> "SimulatorClient":
         self.start()
