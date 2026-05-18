@@ -66,6 +66,7 @@ class SimulatorClient:
     game_dir: str | None = None
     game_dir_candidates: list[str] | None = None
     no_build: bool = True
+    cwd: Path | None = None
 
     def __post_init__(self) -> None:
         repo_root = Path(__file__).resolve().parents[2]
@@ -73,7 +74,10 @@ class SimulatorClient:
             repo_root / "external" / "sts2-cli" / "src" / "Sts2Headless" / "Sts2Headless.csproj"
         )
         self.dotnet_path = self.dotnet_path or find_dotnet()
+        self.cwd = self.cwd or repo_root
         self.proc: subprocess.Popen[str] | None = None
+        self._last_start_cmd: list[str] = []
+        self._last_game_dir: str | None = None
 
     def start(self) -> JsonDict:
         """Start the simulator and return its initial ready message."""
@@ -82,6 +86,7 @@ class SimulatorClient:
 
         env = os.environ.copy()
         game_dir = self._resolve_game_dir()
+        self._last_game_dir = game_dir
         if game_dir:
             env["STS2_GAME_DIR"] = game_dir
 
@@ -89,12 +94,14 @@ class SimulatorClient:
         if self.no_build:
             cmd.append("--no-build")
         cmd.extend(["--project", str(self.project_path)])
+        self._last_start_cmd = cmd
 
         self.proc = subprocess.Popen(
             cmd,
+            cwd=str(self.cwd),
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
             env=env,
@@ -115,12 +122,26 @@ class SimulatorClient:
             line = proc.stdout.readline()
             if not line:
                 message = "EOF from simulator process"
+                if self._last_start_cmd:
+                    message += f"; cmd: {self._last_start_cmd}"
+                if self.cwd:
+                    message += f"; cwd: {self.cwd}"
+                if self._last_game_dir:
+                    message += f"; STS2_GAME_DIR: {self._last_game_dir}"
                 if skipped_lines:
                     message += f"; last stdout: {' | '.join(skipped_lines[-5:])}"
-                if proc.poll() is not None and proc.stderr is not None:
-                    stderr = proc.stderr.read().strip()
+                try:
+                    if proc.poll() is None:
+                        proc.wait(timeout=1)
+                except subprocess.TimeoutExpired:
+                    pass
+                if proc.stderr is not None:
+                    try:
+                        stderr = proc.stderr.read().strip()
+                    except Exception:
+                        stderr = ""
                     if stderr:
-                        message += f": {stderr[-2000:]}"
+                        message += f"; stderr: {stderr[-4000:]}"
                 raise SimulatorClientError(message)
 
             line = line.strip()
@@ -137,7 +158,8 @@ class SimulatorClient:
         proc = self._require_process()
         assert proc.stdin is not None
 
-        proc.stdin.write(json.dumps(command) + "\n")
+        line = json.dumps(command)
+        proc.stdin.write(line + "\n")
         proc.stdin.flush()
         return self.read()
 
