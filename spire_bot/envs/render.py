@@ -2,8 +2,44 @@
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+_SIMULATOR_PYTHON_DIR = Path(__file__).resolve().parents[2] / "external" / "sts2-cli" / "python"
+
+
+def _load_simulator_show_combat():
+    """Import the simulator's rich combat renderer from play.py, if possible."""
+    try:
+        if str(_SIMULATOR_PYTHON_DIR) not in sys.path:
+            sys.path.insert(0, str(_SIMULATOR_PYTHON_DIR))
+        import play
+    except Exception:
+        return None
+
+    play.LANG = "en"
+    # play.py draws HP bars with characters Windows console code pages reject.
+    if (sys.stdout.encoding or "").lower() not in ("utf-8", "utf8"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            return None
+    return play.show_combat
+
+
+_show_combat = _load_simulator_show_combat()
+
 
 def print_state(state: dict) -> None:
+    """Print a combat state using the simulator's rich renderer when available."""
+    if _show_combat is not None and state.get("decision") == "combat_play":
+        print(f"\n== {state.get('decision')} ==")
+        _show_combat(state)
+        return
+    print_state_plain(state)
+
+
+def print_state_plain(state: dict) -> None:
     """Print the most important combat fields in a compact human-readable form."""
     player = state.get("player") or {}
     print(f"\n== {state.get('decision')} | round {state.get('round')} ==")
