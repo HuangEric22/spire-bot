@@ -1,5 +1,12 @@
 # Plan: Observe the Model + Barebones PPO Loop
 
+**Status (2026-07-12): done.** All steps below are implemented and verified.
+One discovery during implementation: the Shrinker Beetle's shrink triggers a
+mid-combat `card_select` decision that used to end episodes early and score the
+vanished enemy list as phantom damage reward. `SilentCombatEnv` now auto-answers
+those prompts (skip when allowed, else pick the first required cards); giving
+the agent control over that choice is a possible future action-space extension.
+
 Goal for this step: understand what the simulator gives us, add a way to *watch* a
 trained model play, and keep the training loop as close to CleanRL `ppo.py` as
 possible. No new abstractions, no new dependencies.
