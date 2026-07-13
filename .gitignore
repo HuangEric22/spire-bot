@@ -220,3 +220,6 @@ __marimo__/
 # Agentic md files
 AGENTS.md
 CLAUDE.md
+
+# Model checkpoints
+checkpoints/

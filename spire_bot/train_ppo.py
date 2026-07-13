@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import random
 import time
+from pathlib import Path
 
 try:
     import numpy as np
@@ -15,6 +16,7 @@ try:
 
     from spire_bot.envs.actions import ACTION_SPACE_SIZE
     from spire_bot.envs.observations import OBSERVATION_SIZE
+    from spire_bot.envs.rewards import combat_won
     from spire_bot.envs.silent_combat_env import SilentCombatEnv
 except ModuleNotFoundError as exc:
     raise SystemExit(
@@ -39,6 +41,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--encounter", type=str, default="SHRINKER_BEETLE_WEAK")
     parser.add_argument("--device", type=str, default="cpu")
+    parser.add_argument("--save-path", type=str, default="checkpoints/ppo_silent.pt")
     parser.add_argument("--debug-resets", action="store_true", help="Print compact simulator state after each env reset.")
     return parser.parse_args()
 
@@ -156,6 +159,7 @@ def main() -> None:
                 action, logprob, _, value = agent.get_action_and_value(obs_tensor, mask_tensor)
                 values_buf[step] = value.flatten()
 
+            prev_state = info["state"]
             next_obs, reward, terminated, truncated, info = env.step(int(action.item()))
             done = terminated or truncated
 
@@ -169,10 +173,14 @@ def main() -> None:
             global_step += 1
 
             if done:
+                final_state = info["state"] or {}
+                final_player = final_state.get("player") or {}
                 print(
                     f"global_step={global_step} "
                     f"episode_return={episode_return:.2f} "
-                    f"episode_length={episode_length}"
+                    f"episode_length={episode_length} "
+                    f"won={combat_won(prev_state, final_state)} "
+                    f"hp_remaining={final_player.get('hp', '?')}"
                 )
                 next_obs, info = env.reset()
                 if args.debug_resets:
@@ -235,6 +243,11 @@ def main() -> None:
             f"entropy={entropy_loss.item():.3f} "
             f"sps={sps}"
         )
+
+    save_path = Path(args.save_path)
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(agent.state_dict(), save_path)
+    print(f"saved checkpoint to {save_path}")
 
     env.close()
 

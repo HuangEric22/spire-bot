@@ -67,12 +67,12 @@ def _player_hp_lost(previous_state: State, next_state: State) -> float:
 def _terminal_reward(previous_state: State, next_state: State) -> float:
     if _combat_lost(next_state):
         return COMBAT_LOSS_PENALTY
-    if _combat_won(previous_state, next_state):
+    if combat_won(previous_state, next_state):
         return COMBAT_WIN_REWARD
     return 0.0
 
 
-def _combat_won(previous_state: State, next_state: State) -> bool:
+def combat_won(previous_state: State, next_state: State) -> bool:
     if previous_state.get("decision") != "combat_play":
         return False
 
