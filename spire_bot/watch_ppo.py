@@ -28,6 +28,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--sample", action="store_true", help="Sample from the masked policy instead of argmax.")
     parser.add_argument("--random", action="store_true", help="Play uniform random valid actions; no checkpoint needed.")
+    parser.add_argument("--quiet", action="store_true", help="Skip the turn-by-turn trace; print only episode results and the summary.")
     return parser.parse_args()
 
 
@@ -89,13 +90,15 @@ def main() -> None:
         done = False
         won = False
 
-        print(f"\n######## episode {episode} ########")
+        if not args.quiet:
+            print(f"\n######## episode {episode} ########")
         while not done:
-            print_state(state)
             mask = np.asarray(info["action_mask"], dtype=np.bool_)
             action = choose_action(agent, obs, mask, rng, args.sample)
-            print(f"valid_actions={np.flatnonzero(mask).tolist()}")
-            print(f"chosen: {action} ({describe_action(action, state)})")
+            if not args.quiet:
+                print_state(state)
+                print(f"valid_actions={np.flatnonzero(mask).tolist()}")
+                print(f"chosen: {action} ({describe_action(action, state)})")
 
             previous_state = state
             obs, reward, terminated, truncated, info = env.step(action)
@@ -104,12 +107,13 @@ def main() -> None:
             episode_return += float(reward)
             done = terminated or truncated
 
-            pieces = reward_breakdown(previous_state, state)
-            print(
-                f"reward={reward:.2f} "
-                f"(damage={pieces.damage_dealt:.2f} hp_lost={pieces.hp_lost:.2f} "
-                f"step={pieces.step:.2f} terminal={pieces.terminal:.2f})"
-            )
+            if not args.quiet:
+                pieces = reward_breakdown(previous_state, state)
+                print(
+                    f"reward={reward:.2f} "
+                    f"(damage={pieces.damage_dealt:.2f} hp_lost={pieces.hp_lost:.2f} "
+                    f"step={pieces.step:.2f} terminal={pieces.terminal:.2f})"
+                )
             if done:
                 won = combat_won(previous_state, state)
 
