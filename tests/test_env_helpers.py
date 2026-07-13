@@ -2,7 +2,15 @@ import unittest
 
 from spire_bot.envs.actions import ACTION_SPACE_SIZE, decode_action, valid_action_mask
 from spire_bot.envs.observations import OBSERVATION_SIZE, encode_observation
-from spire_bot.envs.rewards import compute_reward, reward_breakdown
+from spire_bot.envs.rewards import (
+    COMBAT_LOSS_PENALTY,
+    COMBAT_WIN_REWARD,
+    DAMAGE_REWARD_SCALE,
+    HP_LOSS_PENALTY_SCALE,
+    STEP_PENALTY,
+    compute_reward,
+    reward_breakdown,
+)
 
 
 def sample_state() -> dict:
@@ -226,8 +234,11 @@ class RewardTests(unittest.TestCase):
 
         breakdown = reward_breakdown(previous_state, next_state)
 
-        self.assertAlmostEqual(breakdown.damage_dealt, 0.10)
-        self.assertAlmostEqual(breakdown.total, 0.09)
+        # combat_id=1 disappeared from a state with hp=1, so 1 hp of damage was dealt.
+        self.assertAlmostEqual(breakdown.damage_dealt, DAMAGE_REWARD_SCALE)
+        self.assertAlmostEqual(breakdown.hp_lost, 0.0)
+        self.assertAlmostEqual(breakdown.terminal, 0.0)
+        self.assertAlmostEqual(breakdown.total, DAMAGE_REWARD_SCALE + STEP_PENALTY)
 
     def test_hp_loss_and_terminal_rewards(self) -> None:
         previous_state = {
@@ -244,10 +255,22 @@ class RewardTests(unittest.TestCase):
         win_state = {"decision": "card_reward", "player": {"hp": 70}, "enemies": []}
         loss_state = {"decision": "game_over", "victory": False, "player": {"hp": 0}, "enemies": []}
 
-        self.assertAlmostEqual(reward_breakdown(previous_state, damaged_state).hp_lost, -1.0)
-        self.assertAlmostEqual(reward_breakdown(previous_state, win_state).terminal, 10.0)
-        self.assertAlmostEqual(reward_breakdown(previous_state, loss_state).terminal, -10.0)
-        self.assertAlmostEqual(compute_reward(previous_state, win_state), 10.29)
+        # Player lost 5 hp, so the hp_lost term scales with HP_LOSS_PENALTY_SCALE.
+        self.assertAlmostEqual(
+            reward_breakdown(previous_state, damaged_state).hp_lost,
+            5 * HP_LOSS_PENALTY_SCALE,
+        )
+        self.assertAlmostEqual(
+            reward_breakdown(previous_state, win_state).terminal, COMBAT_WIN_REWARD
+        )
+        self.assertAlmostEqual(
+            reward_breakdown(previous_state, loss_state).terminal, COMBAT_LOSS_PENALTY
+        )
+        # Win transition: 3 hp of damage on the surviving enemy + step penalty + win bonus.
+        self.assertAlmostEqual(
+            compute_reward(previous_state, win_state),
+            3 * DAMAGE_REWARD_SCALE + STEP_PENALTY + COMBAT_WIN_REWARD,
+        )
 
 
 if __name__ == "__main__":
