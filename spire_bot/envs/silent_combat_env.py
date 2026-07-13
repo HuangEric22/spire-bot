@@ -124,12 +124,14 @@ class SilentCombatEnv(gym.Env):
         return info
 
     def _settle_card_select(self, state: dict[str, Any]) -> dict[str, Any]:
-        """Auto-answer card_select prompts (e.g. Shrinker Beetle's shrink).
+        """Auto-answer mid-combat card_select prompts.
 
-        The action space has no card-selection action yet, so choose for the
-        agent: skip when allowed, otherwise pick the first required cards.
-        Without this, a mid-combat card_select would end the episode early and
-        the vanished enemy list would be scored as phantom damage reward.
+        Cards like Survivor ("Discard 1 card.") pause the combat on a
+        card_select decision. The action space has no card-selection action
+        yet, so choose for the agent: skip when allowed, otherwise pick the
+        first required cards. Without this, a mid-combat card_select would end
+        the episode early, and because that state has no enemy list, the
+        vanished enemies would be scored as phantom damage reward.
         """
         for _ in range(10):
             if state.get("decision") != "card_select":
