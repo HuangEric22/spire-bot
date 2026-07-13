@@ -64,7 +64,7 @@ class SilentCombatEnv(gym.Env):
         run_seed = self._run_seed(seed)
 
         self._sim.start_run(character="Silent", seed=run_seed)
-        self._state = self._sim.enter_room("combat", encounter=encounter)
+        self._state = self._settle_card_select(self._sim.enter_room("combat", encounter=encounter))
         if self._state.get("decision") != "combat_play":
             raise RuntimeError(
                 "Expected reset to enter combat_play, "
@@ -91,7 +91,9 @@ class SilentCombatEnv(gym.Env):
             return self._observation(), reward, False, truncated, self._info(invalid_action=True)
 
         simulator_action = decode_action(action, previous_state)
-        self._state = self._sim.act(simulator_action.name, **simulator_action.args)
+        self._state = self._settle_card_select(
+            self._sim.act(simulator_action.name, **simulator_action.args)
+        )
 
         reward = compute_reward(previous_state, self._state)
         terminated = self._state.get("decision") != "combat_play"
@@ -120,6 +122,25 @@ class SilentCombatEnv(gym.Env):
         }
         info.update(extra)
         return info
+
+    def _settle_card_select(self, state: dict[str, Any]) -> dict[str, Any]:
+        """Auto-answer card_select prompts (e.g. Shrinker Beetle's shrink).
+
+        The action space has no card-selection action yet, so choose for the
+        agent: skip when allowed, otherwise pick the first required cards.
+        Without this, a mid-combat card_select would end the episode early and
+        the vanished enemy list would be scored as phantom damage reward.
+        """
+        for _ in range(10):
+            if state.get("decision") != "card_select":
+                return state
+            min_select = int(state.get("min_select") or 0)
+            if min_select <= 0:
+                state = self._sim.act("skip_select")
+            else:
+                indices = ",".join(str(i) for i in range(min_select))
+                state = self._sim.act("select_cards", indices=indices)
+        raise RuntimeError("card_select did not settle after 10 auto-selections.")
 
     def _run_seed(self, seed: int | None) -> str:
         if seed is None:
