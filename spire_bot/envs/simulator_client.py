@@ -60,7 +60,8 @@ def find_dotnet() -> str:
 @dataclass
 class SimulatorClient:
     """Owns one headless STS2 simulator subprocess."""
-
+    prefer_release: bool = False
+    prefer_binary: bool = True
     project_path: Path | None = None
     dotnet_path: str | None = None
     game_dir: str | None = None
@@ -90,10 +91,17 @@ class SimulatorClient:
         if game_dir:
             env["STS2_GAME_DIR"] = game_dir
 
-        cmd = [self.dotnet_path, "run"]
-        if self.no_build:
-            cmd.append("--no-build")
-        cmd.extend(["--project", str(self.project_path)])
+        cmd: list[str] | None = None
+        
+        if self.prefer_binary:
+            cmd = self._build_simulator_cmd()
+        
+        if cmd is None:
+            cmd = [self.dotnet_path, "run"]
+            if self.no_build:
+                cmd.append("--no-build")
+            cmd.extend(["--project", str(self.project_path)])
+        
         self._last_start_cmd = cmd
 
         self.proc = subprocess.Popen(
@@ -222,6 +230,20 @@ class SimulatorClient:
         finally:
             self.proc = None
 
+    def _build_simulator_cmd(self) -> list[str] | None:
+        config = "Release" if self.prefer_release else "Debug"
+        output_dir = self.project_path.parent / "bin" / config / "net9.0"
+
+        exe_path = output_dir / "Sts2Headless.exe"
+        if os.name == "nt" and exe_path.exists():
+            return [str(exe_path)]
+
+        dll_path = output_dir / "Sts2Headless.dll"
+        if dll_path.exists():
+            return [self.dotnet_path, str(dll_path)]
+
+        return None
+    
     def _require_process(self) -> subprocess.Popen[str]:
         if self.proc is None:
             raise SimulatorClientError("Simulator process has not been started.")
@@ -246,3 +268,4 @@ class SimulatorClient:
 
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
         self.close()
+

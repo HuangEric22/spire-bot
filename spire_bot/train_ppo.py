@@ -43,6 +43,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", type=str, default="cpu")
     parser.add_argument("--save-path", type=str, default="checkpoints/ppo_silent.pt")
     parser.add_argument("--debug-resets", action="store_true", help="Print compact simulator state after each env reset.")
+    
+    # custom arguments for our simulator
+    parser.add_argument("--prefer-binary", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--prefer-release", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--restart-on-reset", action=argparse.BooleanOptionalAction, default=True)
+    
     return parser.parse_args()
 
 
@@ -121,8 +127,22 @@ def main() -> None:
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
 
+    # latency diagnostics:
+    reset_times = []
+    step_times = []
+    rollout_times = []
+    update_times = []
+    
     device = torch.device(args.device)
-    env = SilentCombatEnv(encounter=args.encounter, base_seed=f"ppo-{args.seed}")
+    env = SilentCombatEnv(
+        encounter=args.encounter, 
+        base_seed=f"ppo-{args.seed}",
+        restart_on_reset=args.restart_on_reset,
+        simulator_options = {
+            "prefer_binary": args.prefer_binary,
+            "prefer_release": args.prefer_release,            
+        }
+    )
     agent = Agent().to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
@@ -138,7 +158,10 @@ def main() -> None:
     dones_buf = torch.zeros(args.num_steps, device=device)
     values_buf = torch.zeros(args.num_steps, device=device)
 
+    reset_start = time.perf_counter()
     next_obs, info = env.reset(seed=args.seed)
+    reset_times.append(time.perf_counter() - reset_start)
+    
     if args.debug_resets:
         print_reset_debug("initial_reset", info)
     episode_return = 0.0
@@ -147,6 +170,7 @@ def main() -> None:
     start_time = time.time()
 
     for update in range(1, num_updates + 1):
+        rollout_start = time.perf_counter()
         for step in range(args.num_steps):
             action_mask = info["action_mask"]
             obs_tensor = torch.as_tensor(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
@@ -160,7 +184,11 @@ def main() -> None:
                 values_buf[step] = value.flatten()
 
             prev_state = info["state"]
+            
+            step_start = time.perf_counter()
             next_obs, reward, terminated, truncated, info = env.step(int(action.item()))
+            step_times.append(time.perf_counter() - step_start)
+            
             done = terminated or truncated
 
             actions_buf[step] = action
@@ -182,11 +210,17 @@ def main() -> None:
                     f"won={combat_won(prev_state, final_state)} "
                     f"hp_remaining={final_player.get('hp', '?')}"
                 )
+                
+                reset_start = time.perf_counter()
                 next_obs, info = env.reset()
+                reset_times.append(time.perf_counter() - reset_start)
+                
                 if args.debug_resets:
                     print_reset_debug("episode_reset", info)
                 episode_return = 0.0
                 episode_length = 0
+                
+        rollout_times.append(time.perf_counter() - rollout_start)
 
         with torch.no_grad():
             next_obs_tensor = torch.as_tensor(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
@@ -203,6 +237,7 @@ def main() -> None:
                 advantages[t] = lastgaelam = delta + args.gamma * args.gae_lambda * nextnonterminal * lastgaelam
             returns = advantages + values_buf
 
+        update_start = time.perf_counter()
         indices = np.arange(batch_size)
         for _ in range(args.update_epochs):
             np.random.shuffle(indices)
@@ -233,21 +268,36 @@ def main() -> None:
                 loss.backward()
                 nn.utils.clip_grad_norm_(agent.parameters(), args.max_grad_norm)
                 optimizer.step()
-
+        update_times.append(time.perf_counter() - update_start)
+        
+        avg_reset_ms = 1000 * np.mean(reset_times[-10:]) if reset_times else 0.0
+        avg_step_ms = 1000 * np.mean(step_times[-100:]) if step_times else 0.0
+        rollout_s = rollout_times[-1]
+        update_s = update_times[-1]
+        sim_pct = 100 * rollout_s / max(rollout_s + update_s, 1e-9)        
         sps = int(global_step / max(time.time() - start_time, 1e-6))
+        
+        
         print(
             f"update={update}/{num_updates} "
             f"loss={loss.item():.3f} "
             f"policy_loss={pg_loss.item():.3f} "
             f"value_loss={v_loss.item():.3f} "
             f"entropy={entropy_loss.item():.3f} "
-            f"sps={sps}"
+            f"sps={sps} "
+            f"reset_ms={avg_reset_ms:.1f} "
+            f"step_ms={avg_step_ms:.1f} "
+            f"rollout_s={rollout_s:.2f} "
+            f"update_s={update_s:.2f} "
+            f"sim_pct={sim_pct:.1f}"            
         )
 
     save_path = Path(args.save_path)
     save_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(agent.state_dict(), save_path)
     print(f"saved checkpoint to {save_path}")
+    print(f"average restart time: {np.average(reset_times)}")
+    print(f"average step time: {np.average(step_times)}")
 
     env.close()
 

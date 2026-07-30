@@ -26,6 +26,8 @@ class SilentCombatEnv(gym.Env):
         no_build: bool = True,
         invalid_action_penalty: float = -1.0,
         restart_on_reset: bool = True,
+        simulator_options: dict[str, Any] | None = None
+        
     ) -> None:
         self.encounter = encounter
         self.base_seed = base_seed
@@ -33,6 +35,7 @@ class SilentCombatEnv(gym.Env):
         self.no_build = no_build
         self.invalid_action_penalty = invalid_action_penalty
         self.restart_on_reset = restart_on_reset
+        self.simulator_options = simulator_options or {}
 
         self.action_space = gym.spaces.Discrete(ACTION_SPACE_SIZE)
         self.observation_space = gym.spaces.Box(
@@ -150,4 +153,7 @@ class SilentCombatEnv(gym.Env):
         return f"{self.base_seed}-{seed}-{self._episode_index}"
 
     def _new_simulator(self) -> SimulatorClient:
-        return SimulatorClient(no_build=self.no_build)
+        return SimulatorClient(
+            no_build=self.no_build,
+            **self.simulator_options,            
+        )
