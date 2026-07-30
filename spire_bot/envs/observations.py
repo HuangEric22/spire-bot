@@ -6,6 +6,7 @@ from typing import Any
 
 from spire_bot.envs.actions import MAX_HAND_SIZE
 
+import numpy as np
 
 State = dict[str, Any]
 
@@ -30,8 +31,41 @@ TARGET_TYPE_TO_INDEX = {
     "AllEnemies": 3,
 }
 
+def flatten_observation_dict(obs: dict[str, Any]) -> list[float]:
+    flattened_obs = np.concatenate([
+        obs["player_features"].reshape(-1),
+        obs["enemy_features"].reshape(-1),
+        obs["card_features"].reshape(-1),
+    ])
+    
+    if len(flattened_obs) != OBSERVATION_SIZE:
+        raise ValueError(f"Observation has length {len(values)}, expected {OBSERVATION_SIZE}.")    
+    
+    return flattened_obs.tolist()
+
+def encode_observation_dict(state: State) -> dict[str, Any]:
+    player_features = np.asarray(_player_features(state), dtype=np.float32)
+
+    enemy_features = np.zeros((MAX_ENEMIES, ENEMY_FEATURES), dtype=np.float32)
+    enemies = state.get("enemies") or []
+    for enemy_slot, enemy in enumerate(enemies[:MAX_ENEMIES]):
+        enemy_features[enemy_slot] = _enemy_features(enemy)
+
+    card_features = np.zeros((MAX_HAND_SIZE, CARD_FEATURES), dtype=np.float32)
+    cards_by_index = _cards_by_index(state)
+    for hand_index in range(MAX_HAND_SIZE):
+        card_features[hand_index] = _card_features(cards_by_index.get(hand_index))
+
+    return {
+        "player_features": player_features,
+        "enemy_features": enemy_features,
+        "card_features": card_features,
+    }
 
 def encode_observation(state: State) -> list[float]:
+    return flatten_observation_dict(encode_observation_dict(state))
+
+def old_encode_observation(state: State) -> list[float]:
     """Convert a simulator combat state into a fixed-size numeric vector."""
     values: list[float] = []
     values.extend(_player_features(state))
