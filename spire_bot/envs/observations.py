@@ -39,7 +39,7 @@ def flatten_observation_dict(obs: dict[str, Any]) -> list[float]:
     ])
     
     if len(flattened_obs) != OBSERVATION_SIZE:
-        raise ValueError(f"Observation has length {len(values)}, expected {OBSERVATION_SIZE}.")    
+        raise ValueError(f"Observation has length {len(flattened_obs)}, expected {OBSERVATION_SIZE}.")    
     
     return flattened_obs.tolist()
 
@@ -47,19 +47,26 @@ def encode_observation_dict(state: State) -> dict[str, Any]:
     player_features = np.asarray(_player_features(state), dtype=np.float32)
 
     enemy_features = np.zeros((MAX_ENEMIES, ENEMY_FEATURES), dtype=np.float32)
+    enemy_valid = np.zeros(MAX_ENEMIES, dtype=np.bool_)
     enemies = state.get("enemies") or []
     for enemy_slot, enemy in enumerate(enemies[:MAX_ENEMIES]):
         enemy_features[enemy_slot] = _enemy_features(enemy)
+        enemy_valid[enemy_slot] = True
 
     card_features = np.zeros((MAX_HAND_SIZE, CARD_FEATURES), dtype=np.float32)
+    card_valid = np.zeros(MAX_HAND_SIZE, dtype=np.bool_)
     cards_by_index = _cards_by_index(state)
     for hand_index in range(MAX_HAND_SIZE):
-        card_features[hand_index] = _card_features(cards_by_index.get(hand_index))
+        card = cards_by_index.get(hand_index)
+        card_features[hand_index] = _card_features(card)
+        card_valid[hand_index] = card is not None
 
     return {
         "player_features": player_features,
         "enemy_features": enemy_features,
+        "enemy_valid": enemy_valid,
         "card_features": card_features,
+        "card_valid": card_valid,
     }
 
 def encode_observation(state: State) -> list[float]:
