@@ -91,7 +91,3 @@ class ObservationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-class ObservationsTest(unittest.TestCase):
-    def test_observation_has_expected_shape_and_values(self) -> None:
-        return None
