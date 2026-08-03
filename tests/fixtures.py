@@ -3,8 +3,11 @@ from __future__ import annotations
 import copy
 from typing import Any
 
+from spire_bot.envs.actions import MAX_HAND_SIZE
+from spire_bot.envs.observations import MAX_ENEMIES
 
-SILENT_STARTER_HAND = [
+
+SAMPLE_HAND_CARDS = [
     {
         "id": "CARD.NEUTRALIZE",
         "name": "Neutralize",
@@ -109,8 +112,15 @@ SILENT_STARTER_HAND = [
 
 
 def shrinker_beetle_state(hand_size: int = 7, enemy_count: int = 1) -> dict[str, Any]:
+    max_hand = min(len(SAMPLE_HAND_CARDS), MAX_HAND_SIZE)
+    if not 0 <= hand_size <= max_hand:
+        raise ValueError(f"hand_size must be between 0 and {max_hand}.")
+
+    if not 0 <= enemy_count <= MAX_ENEMIES:
+        raise ValueError(f"enemy_count must be between 0 and {MAX_ENEMIES}.")
+
     hand = []
-    for index, card in enumerate(SILENT_STARTER_HAND[:hand_size]):
+    for index, card in enumerate(SAMPLE_HAND_CARDS[:hand_size]):
         card_copy = copy.deepcopy(card)
         card_copy["index"] = index
         hand.append(card_copy)

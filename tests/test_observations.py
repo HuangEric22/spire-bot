@@ -16,11 +16,20 @@ from spire_bot.envs.observations import (
 )
 from tests.fixtures import shrinker_beetle_state
 
+EXPECTED_OBSERVATION_KEYS = {
+    "player_features",
+    "enemy_features",
+    "enemy_valid",
+    "card_features",
+    "card_valid",
+}
+
 
 class ObservationTests(unittest.TestCase):
     def test_observation_dict_has_expected_shapes_and_dtypes(self) -> None:
         obs = encode_observation_dict(shrinker_beetle_state())
 
+        self.assertEqual(set(obs), EXPECTED_OBSERVATION_KEYS)
         self.assertEqual(obs["player_features"].shape, (PLAYER_FEATURES,))
         self.assertEqual(obs["enemy_features"].shape, (MAX_ENEMIES, ENEMY_FEATURES))
         self.assertEqual(obs["enemy_valid"].shape, (MAX_ENEMIES,))
