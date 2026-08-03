@@ -3,15 +3,32 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import IntEnum
 from typing import Any
 
-
+from spire_bot.envs.constants import MAX_ENEMIES, MAX_HAND_SIZE
 State = dict[str, Any]
 
-MAX_HAND_SIZE = 10
+# Game constants
 END_TURN_ACTION = 0
 ACTION_SPACE_SIZE = MAX_HAND_SIZE + 1
 
+# Constants that define factored action parameters
+ACTION_TYPE_SIZE = 2
+CARD_INDEX_SIZE = MAX_HAND_SIZE + 1
+
+class ActionType(IntEnum):
+    END_TURN = 0
+    PLAY_CARD = 1
+    # DISCARD_CARD = 2
+
+@dataclass(frozen=True)
+class FactoredAction:
+    """A series of decisions that result in a single simulator action."""
+    
+    action_type: ActionType
+    card_index: int
+    target_index: int
 
 @dataclass(frozen=True)
 class SimulatorAction:

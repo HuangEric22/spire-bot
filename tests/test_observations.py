@@ -2,11 +2,10 @@ import unittest
 
 import numpy as np
 
-from spire_bot.envs.actions import MAX_HAND_SIZE
+from spire_bot.envs.constants import MAX_ENEMIES, MAX_HAND_SIZE
 from spire_bot.envs.observations import (
     CARD_FEATURES,
     ENEMY_FEATURES,
-    MAX_ENEMIES,
     OBSERVATION_SIZE,
     PLAYER_FEATURES,
     encode_observation,

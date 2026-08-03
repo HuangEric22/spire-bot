@@ -3,8 +3,7 @@ from __future__ import annotations
 import copy
 from typing import Any
 
-from spire_bot.envs.actions import MAX_HAND_SIZE
-from spire_bot.envs.observations import MAX_ENEMIES
+from spire_bot.envs.constants import MAX_ENEMIES, MAX_HAND_SIZE
 
 
 SAMPLE_HAND_CARDS = [

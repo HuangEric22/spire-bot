@@ -4,13 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from spire_bot.envs.actions import MAX_HAND_SIZE
+from spire_bot.envs.constants import MAX_ENEMIES, MAX_HAND_SIZE
 
 import numpy as np
 
 State = dict[str, Any]
 
-MAX_ENEMIES = 5
 PLAYER_FEATURES = 6
 ENEMY_FEATURES = 10
 CARD_FEATURES = 12
