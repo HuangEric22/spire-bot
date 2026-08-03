@@ -16,6 +16,10 @@ ACTION_SPACE_SIZE = MAX_HAND_SIZE + 1
 # Constants that define factored action parameters
 ACTION_TYPE_SIZE = 2
 CARD_INDEX_SIZE = MAX_HAND_SIZE + 1
+NO_CARD_INDEX = MAX_HAND_SIZE
+TARGET_INDEX_SIZE = MAX_ENEMIES + 1
+NO_TARGET_INDEX = MAX_ENEMIES
+
 
 class ActionType(IntEnum):
     END_TURN = 0
@@ -31,12 +35,27 @@ class FactoredAction:
     target_index: int
 
 @dataclass(frozen=True)
+class FactoredActionMasks:
+    type_mask: list[bool]
+    card_mask: list[bool]
+    target_mask: list[bool]
+    
+@dataclass(frozen=True)
 class SimulatorAction:
     """A decoded action ready to send to SimulatorClient.act()."""
 
     name: str
     args: dict[str, Any]
 
+# Pure functions for factored action steps
+def factored_action_masks(state: State) -> FactoredActionMasks:
+    type_mask = [False] * ACTION_TYPE_SIZE
+    card_mask = [False] * CARD_INDEX_SIZE
+    target_mask = [False] * TARGET_INDEX_SIZE
+    
+    type_mask[ActionType.END_TURN.value] = True
+
+    return None
 
 def valid_action_mask(state: State) -> list[bool]:
     """Return which discrete actions are legal in the current combat state."""
