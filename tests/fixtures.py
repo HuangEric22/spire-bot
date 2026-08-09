@@ -143,6 +143,7 @@ def shrinker_beetle_state(hand_size: int = 7, enemy_count: int = 1) -> dict[str,
         )
 
     return {
+        "type": "decision",
         "decision": "combat_play",
         "round": 1,
         "energy": 3,
@@ -155,4 +156,16 @@ def shrinker_beetle_state(hand_size: int = 7, enemy_count: int = 1) -> dict[str,
         },
         "enemies": enemies,
         "hand": hand,
+        "player_powers": [],
     }
+
+def play_card(state: dict[str, Any], card_idx, target_idx) -> None:
+    hand = state.get("hand")
+    enemies = state.get("enemies")
+    
+    target = enemies[target_idx] if 0 < target_idx < len(enemies) else None
+    card = hand[card_idx]
+
+    if card["type"] == "Attack" and target:
+        target["hp"] -= card["stats"].get("damage", 0)
+        del hand[card["index"]]
