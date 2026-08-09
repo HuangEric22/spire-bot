@@ -44,7 +44,7 @@ class FactoredAction:
 class FactoredActionMasks:
     """Boolean masks for the three-stage factored action space.
     Shapes:
-        type_mask: ACTION_TYPE_SIZE.
+        action_mask: ACTION_TYPE_SIZE.
         card_mask: CARD_INDEX_SIZE. Valid card slots for PLAY_CARD only.
         target_mask_by_cards: CARD_INDEX_SIZE x TARGET_INDEX_SIZE.
             Each row gives the valid target slots for that card slot.
@@ -55,7 +55,7 @@ class FactoredActionMasks:
         cards that do not require a specific enemy target.
     """
     
-    type_mask: list[bool]
+    action_mask: list[bool]
     card_mask: list[bool]
     target_mask_by_cards: list[list[bool]]
     
@@ -70,7 +70,7 @@ class SimulatorAction:
 def create_factored_action_masks(state: State) -> FactoredActionMasks:
     """Build legal choices for the current combat state."""
     
-    type_mask = [False] * ACTION_TYPE_SIZE
+    action_mask = [False] * ACTION_TYPE_SIZE
     card_mask = [False] * CARD_INDEX_SIZE
     target_mask_by_cards = [[False] * TARGET_INDEX_SIZE for _ in range(CARD_INDEX_SIZE)]
     
@@ -104,10 +104,10 @@ def create_factored_action_masks(state: State) -> FactoredActionMasks:
             for enemy_idx, _ in enumerate(enemies):
                 target_mask_by_cards[card_index][enemy_idx] = True
 
-    type_mask[ActionType.PLAY_CARD.value] = any(card_mask)        
-    type_mask[ActionType.END_TURN.value] = True
+    action_mask[ActionType.PLAY_CARD.value] = any(card_mask)        
+    action_mask[ActionType.END_TURN.value] = True
 
-    return FactoredActionMasks(type_mask=type_mask, card_mask=card_mask, target_mask_by_cards=target_mask_by_cards)
+    return FactoredActionMasks(action_mask=action_mask, card_mask=card_mask, target_mask_by_cards=target_mask_by_cards)
 
 def _only_no_card_mask() -> list[bool]:
     mask = [False] * CARD_INDEX_SIZE
@@ -158,7 +158,7 @@ def is_valid_factored_action(action: FactoredAction, masks: FactoredActionMasks)
     if selected_target_idx < 0 or selected_target_idx >= TARGET_INDEX_SIZE:
         return False
     
-    if not masks.type_mask[action_type]:
+    if not masks.action_mask[action_type]:
         return False
     
     card_mask = card_mask_for_action_type(action_type, masks)
