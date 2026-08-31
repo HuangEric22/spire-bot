@@ -14,7 +14,14 @@ try:
     import torch.optim as optim
     from torch.distributions.categorical import Categorical
 
-    from spire_bot.envs.actions import ACTION_SPACE_SIZE
+    from spire_bot.envs.actions import (
+        ACTION_TYPE_SIZE, 
+        CARD_INDEX_SIZE,
+        NO_CARD_INDEX,
+        TARGET_INDEX_SIZE,    
+        NO_TARGET_INDEX,
+        ActionType                                
+    )
     from spire_bot.envs.observations import OBSERVATION_SIZE
     from spire_bot.envs.rewards import combat_won
     from spire_bot.envs.silent_combat_env import SilentCombatEnv
@@ -89,13 +96,15 @@ def print_reset_debug(label: str, info: dict) -> None:
 class Agent(nn.Module):
     def __init__(self) -> None:
         super().__init__()
-        self.actor = nn.Sequential(
+        self.actor_trunk = nn.Sequential(
             layer_init(nn.Linear(OBSERVATION_SIZE, 64)),
             nn.Tanh(),
             layer_init(nn.Linear(64, 64)),
             nn.Tanh(),
-            layer_init(nn.Linear(64, ACTION_SPACE_SIZE), std=0.01),
         )
+        self.action_type_head = layer_init(nn.Linear(64, ACTION_TYPE_SIZE), std=0.01)
+        self.card_index_head = layer_init(nn.Linear(64, CARD_INDEX_SIZE), std=0.01)
+        self.target_index_head = layer_init(nn.Linear(64 + CARD_INDEX_SIZE, TARGET_INDEX_SIZE), std=0.01)
         self.critic = nn.Sequential(
             layer_init(nn.Linear(OBSERVATION_SIZE, 64)),
             nn.Tanh(),
@@ -113,11 +122,27 @@ class Agent(nn.Module):
         action_mask: torch.Tensor,
         action: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        logits = self.actor(obs)
-        masked_logits = logits.masked_fill(~action_mask.bool(), -1e9)
-        distribution = Categorical(logits=masked_logits)
+        
+        hidden = self.actor_trunk(obs)
+        action_type_logits = self.action_type_head(hidden)
+        card_index_logits = self.card_index_head(hidden)
+        target_index_logits = self.target_index_head(torch.cat([hidden, card_index_logits], dim=-1))
+        
+        masked_action_logits = action_type_logits.masked_full(~action_mask.bool(), -1e9)
+        masked_card_logits = card_index_logits.masked_full(~card_mask.bool(), -1e9)
+        masked_target_logits = target_index_logits.masked_full(~target_mask.bool(), -1e9)
+        
+        action_distribution = Categorical(logits=masked_action_logits)
+        card_distribution = Categorical(logits=masked_card_logits)
+        target_distribution = Categorical(logits=masked_target_logits)
+        
         if action is None:
             action = distribution.sample()
+        if action is None:
+            action = distribution.sample()
+        if action is None:
+            action = distribution.sample()
+            
         return action, distribution.log_prob(action), distribution.entropy(), self.critic(obs)
 
 
@@ -151,8 +176,10 @@ def main() -> None:
     num_updates = max(args.total_timesteps // args.num_steps, 1)
 
     obs_buf = torch.zeros((args.num_steps, OBSERVATION_SIZE), device=device)
-    mask_buf = torch.zeros((args.num_steps, ACTION_SPACE_SIZE), dtype=torch.bool, device=device)
-    actions_buf = torch.zeros(args.num_steps, dtype=torch.long, device=device)
+    action_mask_buf = torch.zeros((args.num_steps, ACTION_TYPE_SIZE), dtype=torch.bool, device=device)
+    card_mask_buf = torch.zeros((args.num_steps, CARD_INDEX_SIZE), dtype=torch.bool, device=device)
+    target_mask_buf = torch.zeros((args.num_steps, TARGET_INDEX_SIZE), dtype=torch.bool, device=device)
+    actions_buf = torch.zeros((args.num_steps, 3), dtype=torch.long, device=device)
     logprobs_buf = torch.zeros(args.num_steps, device=device)
     rewards_buf = torch.zeros(args.num_steps, device=device)
     dones_buf = torch.zeros(args.num_steps, device=device)
@@ -173,11 +200,18 @@ def main() -> None:
         rollout_start = time.perf_counter()
         for step in range(args.num_steps):
             action_mask = info["action_mask"]
+            card_mask = info["card_mask"]
+            target_mask = info["target_mask"]
+            
             obs_tensor = torch.as_tensor(next_obs, dtype=torch.float32, device=device).unsqueeze(0)
-            mask_tensor = torch.as_tensor(action_mask, dtype=torch.bool, device=device).unsqueeze(0)
+            action_mask_tensor = torch.as_tensor(action_mask, dtype=torch.bool, device=device).unsqueeze(0)
+            card_mask_tensor = torch.as_tensor(card_mask, dtype=torch.bool, device=device).unsqueeze(0)
+            target_mask_tensor = torch.as_tensor(target_mask, dtype=torch.bool, device=device).unsqueeze(0)
 
             obs_buf[step] = obs_tensor.squeeze(0)
-            mask_buf[step] = mask_tensor.squeeze(0)
+            action_mask_buf[step] = action_mask_tensor.squeeze(0)
+            card_mask_buf[step] = card_mask_tensor.squeeze(0)
+            target_mask_buf[step] = target_mask_tensor.squeeze(0)
 
             with torch.no_grad():
                 action, logprob, _, value = agent.get_action_and_value(obs_tensor, mask_tensor)

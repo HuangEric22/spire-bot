@@ -7,7 +7,16 @@ from typing import Any
 import gymnasium as gym
 import numpy as np
 
-from spire_bot.envs.actions import ACTION_SPACE_SIZE, decode_action, valid_action_mask
+from spire_bot.envs.actions import (
+    ACTION_TYPE_SIZE,
+    CARD_INDEX_SIZE,
+    TARGET_INDEX_SIZE,
+    FactoredAction,
+    create_factored_action_masks,
+    is_valid_factored_action,
+    decode_factored_action,
+)
+
 from spire_bot.envs.observations import OBSERVATION_SIZE, encode_observation
 from spire_bot.envs.rewards import compute_reward
 from spire_bot.envs.simulator_client import SimulatorClient
@@ -37,7 +46,7 @@ class SilentCombatEnv(gym.Env):
         self.restart_on_reset = restart_on_reset
         self.simulator_options = simulator_options or {}
 
-        self.action_space = gym.spaces.Discrete(ACTION_SPACE_SIZE)
+        self.action_space = gym.spaces.MultiDiscrete([ACTION_TYPE_SIZE, CARD_INDEX_SIZE, TARGET_INDEX_SIZE])
         self.observation_space = gym.spaces.Box(
             low=-np.inf,
             high=np.inf,
@@ -78,22 +87,36 @@ class SilentCombatEnv(gym.Env):
 
         return self._observation(), self._info()
 
-    def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
+    def step(self, action: Any) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         """Returns observation, reward, terminated, truncated, info"""
-        
         if self._state is None:
             raise RuntimeError("Call reset() before step().")
 
         self._step_count += 1
         previous_state = self._state
-        mask = valid_action_mask(self._state)
 
-        if action < 0 or action >= len(mask) or not mask[action]:
+        try:
+            action_values = np.asarray(action, dtype=np.int64).reshape(-1)
+            if action_values.size != 3:
+                raise ValueError(f"Expected 3 action values, got {action_values.size}.")
+            factored_action = FactoredAction(
+                int(action_values[0]),
+                int(action_values[1]),
+                int(action_values[2]),
+            )
+        except (TypeError, ValueError, IndexError):
             reward = self.invalid_action_penalty
             truncated = self._step_count >= self.max_steps
             return self._observation(), reward, False, truncated, self._info(invalid_action=True)
 
-        simulator_action = decode_action(action, previous_state)
+        masks = create_factored_action_masks(previous_state)
+
+        if not is_valid_factored_action(factored_action, masks):
+            reward = self.invalid_action_penalty
+            truncated = self._step_count >= self.max_steps
+            return self._observation(), reward, False, truncated, self._info(invalid_action=True)
+
+        simulator_action = decode_factored_action(factored_action, previous_state)
         self._state = self._settle_card_select(
             self._sim.act(simulator_action.name, **simulator_action.args)
         )
@@ -104,10 +127,23 @@ class SilentCombatEnv(gym.Env):
 
         return self._observation(), reward, terminated, truncated, self._info()
 
-    def action_masks(self) -> np.ndarray:
+    def action_masks(self) -> dict[str, np.ndarray]:
         if self._state is None:
-            return np.zeros(ACTION_SPACE_SIZE, dtype=np.bool_)
-        return np.asarray(valid_action_mask(self._state), dtype=np.bool_)
+            return {
+                "action_mask": np.zeros(ACTION_TYPE_SIZE, dtype=np.bool_),
+                "card_mask": np.zeros(CARD_INDEX_SIZE, dtype=np.bool_),
+                "target_mask": np.zeros(
+                    (CARD_INDEX_SIZE, TARGET_INDEX_SIZE),
+                    dtype=np.bool_,
+                ),
+            }
+
+        masks = create_factored_action_masks(self._state)
+        return {
+            "action_mask": np.asarray(masks.action_mask, dtype=np.bool_),
+            "card_mask": np.asarray(masks.card_mask, dtype=np.bool_),
+            "target_mask": np.asarray(masks.target_mask, dtype=np.bool_),
+        }
 
     def close(self) -> None:
         self._sim.close()
@@ -119,7 +155,7 @@ class SilentCombatEnv(gym.Env):
 
     def _info(self, **extra: Any) -> dict[str, Any]:
         info = {
-            "action_mask": self.action_masks(),
+            **self.action_masks(),
             "state": self._state,
             "step_count": self._step_count,
         }

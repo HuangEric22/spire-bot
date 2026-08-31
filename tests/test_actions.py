@@ -23,8 +23,8 @@ class ActionTest(unittest.TestCase):
 
         self.assertEqual(len(masks.action_mask), ACTION_TYPE_SIZE)
         self.assertEqual(len(masks.card_mask), CARD_INDEX_SIZE)
-        self.assertEqual(len(masks.target_mask_by_cards), CARD_INDEX_SIZE)
-        for target_mask in masks.target_mask_by_cards:
+        self.assertEqual(len(masks.target_mask), CARD_INDEX_SIZE)
+        for target_mask in masks.target_mask:
             self.assertEqual(len(target_mask), TARGET_INDEX_SIZE)
 
     def test_starting_hand_card_mask_marks_only_visible_cards(self) -> None:
@@ -45,9 +45,9 @@ class ActionTest(unittest.TestCase):
         masks = create_factored_action_masks(state)
 
         for card_index in [0, 1, 2]:
-            self.assertTrue(masks.target_mask_by_cards[card_index][0])
-            self.assertTrue(masks.target_mask_by_cards[card_index][1])
-            self.assertFalse(masks.target_mask_by_cards[card_index][NO_TARGET_INDEX])
+            self.assertTrue(masks.target_mask[card_index][0])
+            self.assertTrue(masks.target_mask[card_index][1])
+            self.assertFalse(masks.target_mask[card_index][NO_TARGET_INDEX])
 
     def test_self_target_cards_use_no_target_slot(self) -> None:
         state = shrinker_beetle_state(hand_size=5, enemy_count=1)
@@ -55,8 +55,8 @@ class ActionTest(unittest.TestCase):
         masks = create_factored_action_masks(state)
 
         for card_index in [3, 4]:
-            self.assertFalse(masks.target_mask_by_cards[card_index][0])
-            self.assertTrue(masks.target_mask_by_cards[card_index][NO_TARGET_INDEX])
+            self.assertFalse(masks.target_mask[card_index][0])
+            self.assertTrue(masks.target_mask[card_index][NO_TARGET_INDEX])
 
     def test_valid_factored_actions(self) -> None:
         state = shrinker_beetle_state(hand_size=5, enemy_count=1)

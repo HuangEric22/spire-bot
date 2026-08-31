@@ -46,7 +46,7 @@ class FactoredActionMasks:
     Shapes:
         action_mask: ACTION_TYPE_SIZE.
         card_mask: CARD_INDEX_SIZE. Valid card slots for PLAY_CARD only.
-        target_mask_by_cards: CARD_INDEX_SIZE x TARGET_INDEX_SIZE.
+        target_mask: CARD_INDEX_SIZE x TARGET_INDEX_SIZE.
             Each row gives the valid target slots for that card slot.
 
     Slot conventions:
@@ -57,7 +57,7 @@ class FactoredActionMasks:
     
     action_mask: list[bool]
     card_mask: list[bool]
-    target_mask_by_cards: list[list[bool]]
+    target_mask: list[list[bool]]
     
 @dataclass(frozen=True)
 class SimulatorAction:
@@ -72,10 +72,10 @@ def create_factored_action_masks(state: State) -> FactoredActionMasks:
     
     action_mask = [False] * ACTION_TYPE_SIZE
     card_mask = [False] * CARD_INDEX_SIZE
-    target_mask_by_cards = [[False] * TARGET_INDEX_SIZE for _ in range(CARD_INDEX_SIZE)]
+    target_mask = [[False] * TARGET_INDEX_SIZE for _ in range(CARD_INDEX_SIZE)]
     
     # Default every card/source slot to the no-target choice; enemy-target cards override this row.
-    for mask in target_mask_by_cards:
+    for mask in target_mask:
         mask[NO_TARGET_INDEX] = True
         
     hand = state.get("hand") or []
@@ -100,14 +100,14 @@ def create_factored_action_masks(state: State) -> FactoredActionMasks:
         card_mask[card_index] = can_play and (not needs_enemy or has_enemies)
         
         if needs_enemy and has_enemies:
-            target_mask_by_cards[card_index][NO_TARGET_INDEX] = False            
+            target_mask[card_index][NO_TARGET_INDEX] = False            
             for enemy_idx, _ in enumerate(enemies):
-                target_mask_by_cards[card_index][enemy_idx] = True
+                target_mask[card_index][enemy_idx] = True
 
     action_mask[ActionType.PLAY_CARD.value] = any(card_mask)        
     action_mask[ActionType.END_TURN.value] = True
 
-    return FactoredActionMasks(action_mask=action_mask, card_mask=card_mask, target_mask_by_cards=target_mask_by_cards)
+    return FactoredActionMasks(action_mask=action_mask, card_mask=card_mask, target_mask=target_mask)
 
 def _only_no_card_mask() -> list[bool]:
     mask = [False] * CARD_INDEX_SIZE
@@ -139,7 +139,7 @@ def target_mask_for_card_and_action(action: int, card_index: int, masks: Factore
     if action_type == ActionType.PLAY_CARD:
         if card_index < 0 or card_index >= NO_CARD_INDEX:
             raise ValueError(f"Invalid card index: {card_index}")
-        return masks.target_mask_by_cards[card_index].copy()
+        return masks.target_mask[card_index].copy()
     
     raise ValueError(f"Unsupported action type: {action_type}")
 
