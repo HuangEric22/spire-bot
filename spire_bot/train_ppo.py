@@ -128,9 +128,9 @@ class Agent(nn.Module):
         card_index_logits = self.card_index_head(hidden)
         target_index_logits = self.target_index_head(torch.cat([hidden, card_index_logits], dim=-1))
         
-        masked_action_logits = action_type_logits.masked_full(~action_mask.bool(), -1e9)
-        masked_card_logits = card_index_logits.masked_full(~card_mask.bool(), -1e9)
-        masked_target_logits = target_index_logits.masked_full(~target_mask.bool(), -1e9)
+        masked_action_logits = action_type_logits.masked_fill(~action_mask.bool(), -1e9)
+        masked_card_logits = card_index_logits.masked_fill(~card_mask.bool(), -1e9)
+        masked_target_logits = target_index_logits.masked_fill(~target_mask.bool(), -1e9)
         
         action_distribution = Categorical(logits=masked_action_logits)
         card_distribution = Categorical(logits=masked_card_logits)
